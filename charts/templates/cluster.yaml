@@ -36,7 +36,7 @@ spec:
       etcdRole: {{ $nodepool.etcd }}
       workerRole: {{ $nodepool.worker }}
       quantity: {{ $nodepool.quantity }}
-      name: {{ $nodepool.name }}
+      name: {{ $.Values.cluster.name }}-pool{{ $index }}
       machineConfigRef:
         {{- if eq $.Values.cloudprovider "amazonec2" }}
         kind: Amazonec2Config
@@ -49,7 +49,7 @@ spec:
         {{- else if eq $.Values.cloudprovider "azure" }}
         kind: AzureConfig
         {{- end}}
-        name: {{ $nodepool.name }}
+        name: {{ $.Values.cluster.name }}-pool{{ $index }}
       paused: {{ $nodepool.paused }}
       displayName: {{ $nodepool.displayName }}
       {{- if $nodepool.rollingUpdate }}
@@ -65,42 +65,6 @@ spec:
       machineDeploymentAnnotations:
 {{ toYaml $nodepool.machineDeploymentAnnotations | indent 8 }}
       {{- end }}
-      {{- end }}
-    {{- end }}
-    {{- if .Values.nodepool }}
-    {{ $nodepool := .Values.nodepool }}
-    - controlPlaneRole: {{ $nodepool.controlplane }}
-      etcdRole: {{ $nodepool.etcd }}
-      workerRole: {{ $nodepool.worker }}
-      quantity: {{ $nodepool.quantity }}
-      name: {{ $nodepool.name }}
-      machineConfigRef:
-        {{- if eq $.Values.cloudprovider "amazonec2" }}
-        kind: Amazonec2Config
-        {{- else if eq $.Values.cloudprovider "vsphere" }}
-        kind: VmwarevsphereConfig
-        {{- else if eq $.Values.cloudprovider "harvester" }}
-        kind: HarvesterConfig
-        {{- else if eq $.Values.cloudprovider "digitalocean" }}
-        kind: DigitaloceanConfig
-        {{- else if eq $.Values.cloudprovider "azure" }}
-        kind: AzureConfig
-        {{- end}}
-        name: {{ $nodepool.name }}
-      paused: {{ $nodepool.paused }}
-      displayName: {{ $nodepool.displayName }}
-      {{- if $nodepool.rollingUpdate }}
-      rollingUpdate:
-        maxUnavailable: {{ $nodepool.rollingUpdate.maxUnavailable }}
-        maxSurge: {{ $nodepool.rollingUpdate.maxSurge }}
-      {{- end }}
-      {{- if $nodepool.machineDeploymentLabels }}
-      machineDeploymentLabels:
-{{ toYaml $nodepool.machineDeploymentLabels | indent 8 }}
-      {{- end }}
-      {{- if $nodepool.machineDeploymentAnnotations }}
-      machineDeploymentAnnotations:
-{{ toYaml $nodepool.machineDeploymentAnnotations | indent 8 }}
       {{- end }}
     {{- end }}
     {{- end }}
