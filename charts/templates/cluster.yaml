@@ -50,8 +50,8 @@ spec:
         kind: AzureConfig
         {{- end}}
         name: {{ $.Values.cluster.name }}-pool{{ $index }}
-      paused: {{ $nodepool.paused }}
-      displayName: {{ $nodepool.displayName }}
+      #paused: {{ $nodepool.paused }}
+      #displayName: {{ $nodepool.displayName }}
       {{- if $nodepool.rollingUpdate }}
       rollingUpdate:
         maxUnavailable: {{ $nodepool.rollingUpdate.maxUnavailable }}
