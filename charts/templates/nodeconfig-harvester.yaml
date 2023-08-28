@@ -5,7 +5,6 @@ kind: HarvesterConfig
 metadata:
   name: {{ $.Values.cluster.name }}-pool{{ $index }}
   namespace: fleet-default
-common:
 {{- if $nodepool.labels }}
   labels:
 {{ toYaml $nodepool.labels | indent 4 }}
