@@ -1,0 +1,140 @@
+# SAMPLE PRE-REQ SECRET FOR HARVESTER
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: harvester-cluster-kubeconfig
+#   namespace: fleet-default
+# data:
+#   .kubeconfig: <base64 encoded kubeconfig>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+  namespace: fleet-default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+  namespace: fleet-default
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - configmaps
+    verbs:
+      - get
+      - list
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}-delete
+  namespace: fleet-default
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs:
+      - delete
+    resourceNames:
+      - {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+      - harvesterconfig{{ .Values.cluster.labels.environment}}{{ .Values.cluster.name }}
+      - {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+  namespace: fleet-default
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+roleRef:
+  kind: Role
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}-delete
+  namespace: fleet-default
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+roleRef:
+  kind: Role
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}-delete
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+  namespace: fleet-default
+spec:
+  template:
+    spec:
+      volumes:
+        - name: harvester-cluster-kubeconfig
+          secret:
+            secretName: harvester-cluster-kubeconfig
+      automountServiceAccountToken: true
+      serviceAccountName: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+      containers:
+        - name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add curl tar bash jq coreutils
+              curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+              chmod +x kubectl
+              mv kubectl /usr/local/bin/
+              curl -LO https://raw.githubusercontent.com/harvester/harvester-csi-driver/master/deploy/generate_addon_csi.sh
+              chmod +x generate_addon_csi.sh
+              mv generate_addon_csi.sh /usr/local/bin/
+              echo "Moving Harvester Kubeconfg"
+              mkdir -p /root/.kube
+              cp /kubeconfig-harvester/..data/.kubeconfig /root/.kube/config
+              echo "Generating CSI Data"
+              kubectl delete secret {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}-token --ignore-not-found
+              kubectl delete rolebinding {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }} --ignore-not-found
+              kubectl delete serviceaccount {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }} --ignore-not-found
+              /usr/local/bin/generate_addon_csi.sh {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }} {{ .Values.cluster.labels.customer }} rke2 | tee -a /csi_data.out
+              cat /csi_data.out
+              echo "Splitting CSI output"
+              sed -i -n '/########## cloud-config ############/,/########## cloud-init user data ############/p' /csi_data.out
+              cat /csi_data.out
+              echo "Removing Harvester Kubeconfig and apply secret to local Rancher cluster"
+              rm -f /root/.kube/config
+              echo "Removing existing secret, if exists"
+              kubectl delete secret harvesterconfig{{ .Values.cluster.labels.environment}}{{ .Values.cluster.name }} --ignore-not-found
+              cat <<EOF >> /secret.yaml
+              apiVersion: v1
+              kind: Secret
+              metadata:
+                name: harvesterconfig{{ .Values.cluster.labels.environment}}{{ .Values.cluster.name }}
+                namespace: fleet-default
+                annotations:
+                  v2prov-authorized-secret-deletes-on-cluster-removal: "true"
+                  v2prov-secret-authorized-for-cluster: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+              type: Opaque
+              data:
+                credential: $(cat /csi_data.out | base64 -w0)
+              EOF
+              cat /secret.yaml
+              kubectl apply -f /secret.yaml | tee -a /log.out
+              echo "$(kubectl get secret harvesterconfig{{ .Values.cluster.labels.environment}}{{ .Values.cluster.name }})"
+              echo "Completed operations"
+          volumeMounts:
+            - name: harvester-cluster-kubeconfig
+              readOnly: true
+              mountPath: "/kubeconfig-harvester"
+      restartPolicy: Never
+  backoffLimit: 4

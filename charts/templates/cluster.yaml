@@ -9,7 +9,7 @@ metadata:
   annotations:
 {{ toYaml .Values.cluster.annotations | indent 4 }}
   {{- end }}
-  name: {{ .Values.cluster.name }}
+  name: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
   namespace: fleet-default
 spec:
   {{- if .Values.cloudCredentialSecretName }}
@@ -25,10 +25,18 @@ spec:
     caCerts: {{ .Values.rke.localClusterAuthEndpoint.caCerts }}
   {{- end }}
   # enable network policy
-  enableNetworkPolicy: true
+  enableNetworkPolicy: false
   # specify rancher helm chart values deployed into downstream cluster
   # rancherValues: {}
   rkeConfig:
+    chartValues:
+      harvester-cloud-provider:
+        cloudConfigPath: /var/lib/rancher/rke2/etc/config-files/cloud-provider-config
+        clusterName: {{ .Values.cluster.labels.environment}}-{{ .Values.cluster.name }}
+      rke2-calico: {}
+    etcd:
+      snapshotRetention: 5
+      snapshotScheduleCron: 0 */5 * * *
     {{- if ne .Values.cloudprovider "custom" }}
     machinePools:
     {{- if .Values.nodepools }} {{ range $index, $nodepool := .Values.nodepools }}
@@ -49,7 +57,7 @@ spec:
         {{- else if eq $.Values.cloudprovider "azure" }}
         kind: AzureConfig
         {{- end}}
-        name: {{ $.Values.cluster.name }}-pool{{ $index }}
+        name: {{ $.Values.cluster.labels.environment}}-{{ $.Values.cluster.name }}-pool{{ $index }}
       #paused: {{ $nodepool.paused }}
       #displayName: {{ $nodepool.displayName }}
       {{- if $nodepool.rollingUpdate }}
@@ -83,8 +91,9 @@ spec:
       # disable: false
       # Disable automatic etcd snapshots
       # etcd-disable-snapshots: false
+      disable-kube-proxy: false
       # Expose etcd metrics to client interface. (Default false)
-      # etcd-expose-metrics: false
+      etcd-expose-metrics: false
       # Directory to save db snapshots. (Default location: ${data-dir}/db/snapshots)
       # etcd-snapshot-dir: ""
       # Set the base name of etcd snapshots. Default: etcd-snapshot-<unix-timestamp> (default: "etcd-snapshot")
@@ -110,8 +119,11 @@ spec:
       # Add additional hostnames or IPv4/IPv6 addresses as Subject Alternative Names on the server TLS cert
       # tls-san: []
 
-    # machineSelectorConfig:
-    # - config:
+    machineSelectorConfig:
+    - config:
+        cloud-provider-config: secret://fleet-default:harvesterconfig{{ $.Values.cluster.labels.environment}}{{ .Values.cluster.name }}
+        cloud-provider-name: harvester
+        protect-kernel-defaults: false
         # Node name
         # node-name: ""
         # Disable embedded containerd and use alternative CRI implementation

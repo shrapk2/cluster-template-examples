@@ -3,7 +3,7 @@
 apiVersion: rke-machine-config.cattle.io/v1
 kind: HarvesterConfig
 metadata:
-  name: {{ $.Values.cluster.name }}-pool{{ $index }}
+  name: {{ $.Values.cluster.labels.environment}}-{{ $.Values.cluster.name }}-pool{{ $index }}
   namespace: fleet-default
 {{- if $nodepool.labels }}
   labels:
